@@ -59,6 +59,7 @@
 
 #include "sh-sci.h"
 
+
 /* Offsets into the sci_port->irqs array */
 enum {
 	SCIx_ERI_IRQ,
@@ -545,10 +546,45 @@ static void sci_poll_put_char(struct uart_port *port, unsigned char c)
 }
 #endif /* CONFIG_CONSOLE_POLL || CONFIG_SERIAL_SH_SCI_CONSOLE */
 
+static void sci_init_pins_ptr(struct uart_port *port, unsigned int cflag)
+{
+	unsigned short status;
+
+	if (!(cflag & CRTSCTS)) {
+		status = serial_port_in(port, SCSPTR);
+		status &= ~SCSPTR_CTSIO;
+		status |= SCSPTR_RTSIO;
+		serial_port_out(port, SCSPTR, status);
+	}
+}
+
+static void sci_init_pins_pcr(struct uart_port *port, unsigned int cflag)
+{
+	unsigned short pcr;
+	unsigned short pdr;
+
+	if (cflag & CRTSCTS) {
+		pcr = serial_port_in(port, SCPCR);
+		pcr &= ~SCPCR_RTSC;
+		pcr &= ~SCPCR_CTSC;
+		serial_port_out(port, SCPCR, pcr);
+	} else {
+		pcr = serial_port_in(port, SCPCR);
+		pdr = serial_port_in(port, SCPDR);
+		/* Asign RTS# and CTS# pads as gpio's */
+		pcr |= SCPCR_RTSC | SCPCR_CTSC;
+		/* Set RTS# pin to low */
+		pdr &= ~SCPDR_RTSD;
+		serial_port_out(port, SCPDR, pdr);
+		serial_port_out(port, SCPCR, pcr);
+	}
+}
+
 static void sci_init_pins(struct uart_port *port, unsigned int cflag)
 {
 	struct sci_port *s = to_sci_port(port);
-	const struct plat_sci_reg *reg = sci_regmap[s->cfg->regtype] + SCSPTR;
+	const struct plat_sci_reg *reg_ptr;
+	const struct plat_sci_reg *reg_pcr;
 
 	/*
 	 * Use port-specific handler if provided.
@@ -559,20 +595,16 @@ static void sci_init_pins(struct uart_port *port, unsigned int cflag)
 	}
 
 	/*
-	 * For the generic path SCSPTR is necessary. Bail out if that's
-	 * unavailable, too.
+	 * For the generic path SCSPTR (SCxPCR for SCIFA) is necessary.
+	 *  Bail out if that's unavailable, too.
 	 */
-	if (!reg->size)
-		return;
-
-	if ((s->cfg->capabilities & SCIx_HAVE_RTSCTS) &&
-	    ((!(cflag & CRTSCTS)))) {
-		unsigned short status;
-
-		status = serial_port_in(port, SCSPTR);
-		status &= ~SCSPTR_CTSIO;
-		status |= SCSPTR_RTSIO;
-		serial_port_out(port, SCSPTR, status); /* Set RTS = 1 */
+	if (s->cfg->capabilities & SCIx_HAVE_RTSCTS) {
+		reg_ptr = sci_regmap[s->cfg->regtype] + SCSPTR;
+		reg_pcr = sci_regmap[s->cfg->regtype] + SCPCR;
+		if (reg_ptr->size)
+			sci_init_pins_ptr(port, cflag);
+		else if (reg_pcr->size)
+			sci_init_pins_pcr(port, cflag);
 	}
 }
 
@@ -1267,7 +1299,7 @@ static unsigned int sci_get_mctrl(struct uart_port *port)
 	 * CTS/RTS is handled in hardware when supported, while nothing
 	 * else is wired up. Keep it simple and simply assert DSR/CAR.
 	 */
-	return TIOCM_DSR | TIOCM_CAR;
+	return TIOCM_DTR | TIOCM_RTS | TIOCM_CTS | TIOCM_DSR;
 }
 
 #ifdef CONFIG_SERIAL_SH_SCI_DMA
@@ -2599,6 +2631,7 @@ sci_parse_dt(struct platform_device *pdev, unsigned int *dev_id)
 	const struct sci_port_info *info;
 	struct plat_sci_port *p;
 	int id;
+	unsigned int have_rtscts = 0;
 
 	if (!IS_ENABLED(CONFIG_OF) || !np)
 		return NULL;
@@ -2621,6 +2654,12 @@ sci_parse_dt(struct platform_device *pdev, unsigned int *dev_id)
 	}
 
 	*dev_id = id;
+
+	of_property_read_u32(np, "have-rtscts", &have_rtscts);
+	if (have_rtscts)
+		p->capabilities = SCIx_HAVE_RTSCTS;
+	else
+		p->capabilities = 0;
 
 	p->flags = UPF_IOREMAP | UPF_BOOT_AUTOCONF;
 	p->type = info->type;

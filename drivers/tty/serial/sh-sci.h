@@ -104,11 +104,16 @@ enum {
 /* SCPCR (Serial Port Control Register), SCIFA/SCIFB only */
 #define SCPCR_RTSC	BIT(4)	/* Serial Port RTS Pin / Output Pin */
 #define SCPCR_CTSC	BIT(3)	/* Serial Port CTS Pin / Input Pin */
+#define SCPCR_SCKC	BIT(2)	/* SCK pin -> SCK / output */
+#define SCPCR_RXDC	BIT(1)	/* RXD pin -> RXD / input  */
+#define SCPCR_TXDC	BIT(0)	/* TXD pin -> TXD / output */
 
 /* SCPDR (Serial Port Data Register), SCIFA/SCIFB only */
 #define SCPDR_RTSD	BIT(4)	/* Serial Port RTS Output Pin Data */
 #define SCPDR_CTSD	BIT(3)	/* Serial Port CTS Input Pin Data */
-
+#define SCPDR_SCKD	BIT(2)	/* SCK output */
+#define SCPDR_RXDD	BIT(1)	/* RXD input  */
+#define SCPDR_TXDD	BIT(0)	/* TXD output */
 
 #define SCxSR_TEND(port)	(((port)->type == PORT_SCI) ? SCI_TEND   : SCIF_TEND)
 #define SCxSR_RDxF(port)	(((port)->type == PORT_SCI) ? SCI_RDRF   : SCIF_RDF)
