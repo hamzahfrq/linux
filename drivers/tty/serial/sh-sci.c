@@ -86,6 +86,7 @@ struct sci_port {
 	unsigned int		error_clear;
 	unsigned int		sampling_rate;
 	resource_size_t		reg_size;
+	unsigned int		smr_scr;
 
 	/* Break timer */
 	struct timer_list	break_timer;
@@ -2061,7 +2062,7 @@ static void sci_set_termios(struct uart_port *port, struct ktermios *termios,
 	 * that the previous boot loader has enabled required clocks and
 	 * setup the baud rate generator hardware for us already.
 	 */
-	max_baud = port->uartclk ? port->uartclk / 16 : 115200;
+	max_baud = port->uartclk ? port->uartclk / s->sampling_rate : 115200;
 
 	baud = uart_get_baud_rate(port, termios, old, 0, max_baud);
 	if (likely(baud && port->uartclk)) {
@@ -2081,6 +2082,8 @@ static void sci_set_termios(struct uart_port *port, struct ktermios *termios,
 	sci_reset(port);
 
 	smr_val |= serial_port_in(port, SCSMR) & SCSMR_CKS;
+
+	smr_val |= s->smr_scr;
 
 	uart_update_timeout(port, termios->c_cflag, baud);
 
@@ -2355,6 +2358,8 @@ static int sci_init_single(struct platform_device *dev,
 			return ret;
 	}
 
+	sci_port->smr_scr = 0;
+
 	switch (p->type) {
 	case PORT_SCIFB:
 		port->fifosize = 256;
@@ -2372,7 +2377,8 @@ static int sci_init_single(struct platform_device *dev,
 		port->fifosize = 64;
 		sci_port->overrun_reg = SCxSR;
 		sci_port->overrun_mask = SCIFA_ORER;
-		sci_port->sampling_rate = 16;
+		sci_port->sampling_rate = 13;
+		sci_port->smr_scr = 4 << 8; /* Sampling rate 1/13 */
 		break;
 	case PORT_SCIF:
 		if (p->regtype == SCIx_SH7705_SCIF_REGTYPE) {
