@@ -571,6 +571,12 @@ static void sci_init_pins_pcr(struct uart_port *port, unsigned int cflag)
 
 	if (cflag & CRTSCTS) {
 		pcr = serial_port_in(port, SCPCR);
+		/* FIXME: For some reason
+		 * bits 3 and 4 in PCR need to be set
+		 * to 1 first */
+		pcr |= SCPCR_RTSC | SCPCR_CTSC;
+		serial_port_out(port, SCPCR, pcr);
+
 		pcr &= ~SCPCR_RTSC;
 		pcr &= ~SCPCR_CTSC;
 		serial_port_out(port, SCPCR, pcr);
@@ -785,6 +791,7 @@ static void sci_receive_chars(struct uart_port *port)
 				}
 
 				/* Store data and status */
+				flag = TTY_NORMAL;
 				if (status & SCxSR_FER(port)) {
 					flag = TTY_FRAME;
 					port->icount.frame++;
@@ -793,8 +800,11 @@ static void sci_receive_chars(struct uart_port *port)
 					flag = TTY_PARITY;
 					port->icount.parity++;
 					dev_notice(port->dev, "parity error\n");
-				} else
-					flag = TTY_NORMAL;
+				} else if (status & sci_port->overrun_mask) {
+					flag = TTY_OVERRUN;
+					port->icount.overrun++;
+					dev_notice(port->dev, "overrun error\n");
+				}
 
 				tty_insert_flip_char(tport, c, flag);
 			}
