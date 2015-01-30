@@ -1619,7 +1619,7 @@ static void sci_stop_rx(struct uart_port *port)
 	ctrl = serial_port_in(port, SCSCR);
 
 	if (port->type == PORT_SCIFA || port->type == PORT_SCIFB)
-		ctrl &= ~SCSCR_RDRQE;
+		ctrl &= ~(SCSCR_RDRQE | SCSCR_RE);
 
 	ctrl &= ~port_rx_irq_mask(port);
 
@@ -1848,6 +1848,36 @@ static inline void sci_free_dma(struct uart_port *port)
 }
 #endif
 
+static void sci_reset(struct uart_port *port)
+{
+	const struct plat_sci_reg *reg;
+	unsigned int status;
+
+	do {
+		status = serial_port_in(port, SCxSR);
+	} while (!(status & SCxSR_TEND(port)));
+
+	serial_port_out(port, SCSCR, 0x00);	/* TE=0, RE=0, CKE1=0 */
+
+	/* Reset the FIFO if available */
+	reg = sci_getreg(port, SCFCR);
+	if (reg->size) {
+		serial_port_out(port, SCFCR, SCFCR_RFRST | SCFCR_TFRST);
+
+		/* WORKAROUND: flush any remaining bytes in the FIFO */
+		while(status & SCxSR_RDxF(port)) {
+
+			dev_dbg(port->dev, "%s: Flushing a byte from the FIFO\n",
+					__func__);
+
+			serial_port_in(port, SCxRDR);
+
+			serial_port_out(port, SCxSR, SCxSR_RDxF_CLEAR(port));
+			status = serial_port_in(port, SCxSR);
+		}
+	}
+}
+
 static int sci_startup(struct uart_port *port)
 {
 	struct sci_port *s = to_sci_port(port);
@@ -1855,6 +1885,8 @@ static int sci_startup(struct uart_port *port)
 	int ret;
 
 	dev_dbg(port->dev, "%s(%d)\n", __func__, port->line);
+
+	sci_reset(port);
 
 	ret = sci_request_irq(s);
 	if (unlikely(ret < 0))
@@ -1974,22 +2006,6 @@ static void sci_baud_calc_hscif(unsigned int bps, unsigned long freq,
 		*srr = 15;
 		*cks = 0;
 	}
-}
-
-static void sci_reset(struct uart_port *port)
-{
-	const struct plat_sci_reg *reg;
-	unsigned int status;
-
-	do {
-		status = serial_port_in(port, SCxSR);
-	} while (!(status & SCxSR_TEND(port)));
-
-	serial_port_out(port, SCSCR, 0x00);	/* TE=0, RE=0, CKE1=0 */
-
-	reg = sci_getreg(port, SCFCR);
-	if (reg->size)
-		serial_port_out(port, SCFCR, SCFCR_RFRST | SCFCR_TFRST);
 }
 
 static void sci_set_termios(struct uart_port *port, struct ktermios *termios,
