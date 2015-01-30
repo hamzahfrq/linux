@@ -1038,23 +1038,26 @@ static irqreturn_t sci_tx_interrupt(int irq, void *ptr)
 static irqreturn_t sci_er_interrupt(int irq, void *ptr)
 {
 	struct uart_port *port = ptr;
+	struct sci_port *s = to_sci_port(port);
 
 	/* Handle errors */
-	if (port->type == PORT_SCI) {
-		if (sci_handle_errors(port)) {
-			/* discard character in rx buffer */
-			serial_port_in(port, SCxSR);
-			sci_clear_SCxSR(port, SCxSR_RDxF_CLEAR(port));
+	if(!s->cfg->use_dma) {
+		if (port->type == PORT_SCI) {
+			if (sci_handle_errors(port)) {
+				/* discard character in rx buffer */
+				serial_port_in(port, SCxSR);
+				serial_port_out(port, SCxSR, SCxSR_RDxF_CLEAR(port));
+			}
+		} else {
+			sci_handle_fifo_overrun(port);
+			sci_rx_interrupt(irq, ptr);
 		}
-	} else {
-		sci_handle_fifo_overrun(port);
-		sci_rx_interrupt(irq, ptr);
+
+		serial_port_out(port, SCxSR, SCxSR_ERROR_CLEAR(port));
+
+		/* Kick the transmission */
+		sci_tx_interrupt(irq, ptr);
 	}
-
-	sci_clear_SCxSR(port, SCxSR_ERROR_CLEAR(port));
-
-	/* Kick the transmission */
-	sci_tx_interrupt(irq, ptr);
 
 	return IRQ_HANDLED;
 }
@@ -1062,10 +1065,13 @@ static irqreturn_t sci_er_interrupt(int irq, void *ptr)
 static irqreturn_t sci_br_interrupt(int irq, void *ptr)
 {
 	struct uart_port *port = ptr;
+	struct sci_port *s = to_sci_port(port);
 
 	/* Handle BREAKs */
-	sci_handle_breaks(port);
-	sci_clear_SCxSR(port, SCxSR_BREAK_CLEAR(port));
+	if(!s->cfg->use_dma) {
+		sci_handle_breaks(port);
+		serial_port_out(port, SCxSR, SCxSR_BREAK_CLEAR(port));
+	}
 
 	return IRQ_HANDLED;
 }
@@ -1200,6 +1206,7 @@ static int sci_request_irq(struct sci_port *port)
 		int irq;
 
 		if (SCIx_IRQ_IS_MUXED(port)) {
+			dev_dbg(up->dev, "Using muxed interrupt.\n");
 			i = SCIx_MUX_IRQ;
 			irq = up->irq;
 		} else {
@@ -1362,6 +1369,15 @@ static int sci_dma_rx_push(struct sci_port *s, struct scatterlist *sg,
 			 count - room);
 	if (!room)
 		return room;
+
+	/*
+	 * if error was detected, it will insert a character with
+	 * the corresponding flag, skip the TTY_NORMAL character
+	 */
+	if(sci_handle_errors(port) > 0) {
+		serial_port_out(port, SCxSR, SCxSR_ERROR_CLEAR(port));
+		return 0;
+	}
 
 	for (i = 0; i < room; i++)
 		tty_insert_flip_char(tport, ((u8 *)sg_virt(sg))[i], TTY_NORMAL);
