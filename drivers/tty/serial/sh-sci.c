@@ -2264,12 +2264,13 @@ static int sci_init_single(struct platform_device *dev,
 		sampling_rate = 16;
 		break;
 	case PORT_SCIF:
-		port->fifosize = 16;
 		if (p->regtype == SCIx_SH7705_SCIF_REGTYPE) {
+			port->fifosize = 64;
 			sci_port->overrun_reg = SCxSR;
 			sci_port->overrun_mask = SCIFA_ORER;
 			sampling_rate = 16;
 		} else {
+			port->fifosize = 16;
 			sci_port->overrun_reg = SCLSR;
 			sci_port->overrun_mask = SCLSR_ORER;
 			sampling_rate = 32;
