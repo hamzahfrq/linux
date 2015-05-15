@@ -1372,10 +1372,13 @@ static void sci_rx_dma_release(struct sci_port *s, bool enable_pio)
 
 	s->chan_rx = NULL;
 	s->cookie_rx[0] = s->cookie_rx[1] = -EINVAL;
+	if (sg_dma_address(&s->sg_rx[0])) {
+		dma_free_coherent(chan->device->dev, s->buf_len_rx * 2,
+				  sg_virt(&s->sg_rx[0]),
+				  sg_dma_address(&s->sg_rx[0]));
+		sg_dma_address(&s->sg_rx[0]) = 0;
+	}
 	dma_release_channel(chan);
-	if (sg_dma_address(&s->sg_rx[0]))
-		dma_free_coherent(port->dev, s->buf_len_rx * 2,
-				  sg_virt(&s->sg_rx[0]), sg_dma_address(&s->sg_rx[0]));
 	if (enable_pio)
 		sci_start_rx(port);
 }
@@ -1706,7 +1709,8 @@ static void sci_request_dma(struct uart_port *port)
 		sg_set_page(&s->sg_tx, virt_to_page(port->state->xmit.buf),
 			    UART_XMIT_SIZE,
 			    (uintptr_t)port->state->xmit.buf & ~PAGE_MASK);
-		nent = dma_map_sg(port->dev, &s->sg_tx, 1, DMA_TO_DEVICE);
+		nent = dma_map_sg(chan->device->dev, &s->sg_tx, 1,
+				  DMA_TO_DEVICE);
 		if (!nent)
 			sci_tx_dma_release(s, false);
 		else
@@ -1735,8 +1739,9 @@ static void sci_request_dma(struct uart_port *port)
 		s->chan_rx = chan;
 
 		s->buf_len_rx = 2 * max(16, (int)port->fifosize);
-		buf[0] = dma_alloc_coherent(port->dev, s->buf_len_rx * 2,
-					    &dma[0], GFP_KERNEL);
+		buf[0] = dma_alloc_coherent(chan->device->dev,
+					    s->buf_len_rx * 2, &dma[0],
+					    GFP_KERNEL);
 
 		if (!buf[0]) {
 			dev_warn(port->dev,
