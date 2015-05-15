@@ -1390,6 +1390,14 @@ static void sci_tx_dma_release(struct sci_port *s, bool enable_pio)
 
 	s->chan_tx = NULL;
 	s->cookie_tx = -EINVAL;
+	if (s->sg_len_tx) {
+		/* Restore sg_dma_len() and sg_dma_address() */
+		sg_dma_len(&s->sg_tx) = UART_XMIT_SIZE;
+		sg_dma_address(&s->sg_tx) = sg_dma_address(&s->sg_tx) &
+					    ~(UART_XMIT_SIZE - 1);
+		dma_unmap_sg(chan->device->dev, &s->sg_tx, 1, DMA_TO_DEVICE);
+		s->sg_len_tx = 0;
+	}
 	dma_release_channel(chan);
 	if (enable_pio)
 		sci_start_tx(port);
