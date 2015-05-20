@@ -1715,10 +1715,10 @@ static void sci_request_dma(struct uart_port *port)
 		s->chan_tx = chan;
 		sg_init_table(&s->sg_tx, 1);
 		/* UART circular tx buffer is an aligned page. */
-		BUG_ON((uintptr_t)port->state->xmit.buf & ~PAGE_MASK);
+		BUG_ON(offset_in_page(port->state->xmit.buf));
 		sg_set_page(&s->sg_tx, virt_to_page(port->state->xmit.buf),
 			    UART_XMIT_SIZE,
-			    (uintptr_t)port->state->xmit.buf & ~PAGE_MASK);
+			    offset_in_page(port->state->xmit.buf));
 		nent = dma_map_sg(chan->device->dev, &s->sg_tx, 1,
 				  DMA_TO_DEVICE);
 		if (!nent)
@@ -1768,7 +1768,7 @@ static void sci_request_dma(struct uart_port *port)
 
 			sg_init_table(sg, 1);
 			sg_set_page(sg, virt_to_page(buf[i]), s->buf_len_rx,
-				    (uintptr_t)buf[i] & ~PAGE_MASK);
+				    offset_in_page(buf[i]));
 			sg_dma_address(sg) = dma[i];
 		}
 
