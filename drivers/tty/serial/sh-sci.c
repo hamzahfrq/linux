@@ -1713,12 +1713,9 @@ static void sci_request_dma(struct uart_port *port)
 	dev_dbg(port->dev, "%s: TX: got channel %p\n", __func__, chan);
 	if (chan) {
 		s->chan_tx = chan;
-		sg_init_table(&s->sg_tx, 1);
 		/* UART circular tx buffer is an aligned page. */
 		BUG_ON(offset_in_page(port->state->xmit.buf));
-		sg_set_page(&s->sg_tx, virt_to_page(port->state->xmit.buf),
-			    UART_XMIT_SIZE,
-			    offset_in_page(port->state->xmit.buf));
+		sg_init_one(&s->sg_tx, port->state->xmit.buf, UART_XMIT_SIZE);
 		nent = dma_map_sg(chan->device->dev, &s->sg_tx, 1,
 				  DMA_TO_DEVICE);
 		if (!nent)
