@@ -980,12 +980,13 @@ static void rcar_dmac_free_chan_resources(struct dma_chan *chan)
 	struct rcar_dmac *dmac = to_rcar_dmac(chan->device);
 	struct rcar_dmac_desc_page *page, *_page;
 	struct rcar_dmac_desc *desc;
+	unsigned long flags;
 	LIST_HEAD(list);
 
 	/* Protect against ISR */
-	spin_lock_irq(&rchan->lock);
+	spin_lock_irqsave(&rchan->lock, flags);
 	rcar_dmac_chan_halt(rchan);
-	spin_unlock_irq(&rchan->lock);
+	spin_unlock_irqrestore(&rchan->lock, flags);
 
 	/* Now no new interrupts will occur */
 
@@ -1368,8 +1369,9 @@ static irqreturn_t rcar_dmac_isr_channel_thread(int irq, void *dev)
 {
 	struct rcar_dmac_chan *chan = dev;
 	struct rcar_dmac_desc *desc;
+	unsigned long flags;
 
-	spin_lock_irq(&chan->lock);
+	spin_lock_irqsave(&chan->lock, flags);
 
 	/* For cyclic transfers notify the user after every chunk. */
 	if (chan->desc.running && chan->desc.running->cyclic) {
@@ -1381,9 +1383,9 @@ static irqreturn_t rcar_dmac_isr_channel_thread(int irq, void *dev)
 		callback_param = desc->async_tx.callback_param;
 
 		if (callback) {
-			spin_unlock_irq(&chan->lock);
+			spin_unlock_irqrestore(&chan->lock, flags);
 			callback(callback_param);
-			spin_lock_irq(&chan->lock);
+			spin_lock_irqsave(&chan->lock, flags);
 		}
 	}
 
@@ -1398,20 +1400,20 @@ static irqreturn_t rcar_dmac_isr_channel_thread(int irq, void *dev)
 		list_del(&desc->node);
 
 		if (desc->async_tx.callback) {
-			spin_unlock_irq(&chan->lock);
+			spin_unlock_irqrestore(&chan->lock, flags);
 			/*
 			 * We own the only reference to this descriptor, we can
 			 * safely dereference it without holding the channel
 			 * lock.
 			 */
 			desc->async_tx.callback(desc->async_tx.callback_param);
-			spin_lock_irq(&chan->lock);
+			spin_lock_irqsave(&chan->lock, flags);
 		}
 
 		list_add_tail(&desc->node, &chan->desc.wait);
 	}
 
-	spin_unlock_irq(&chan->lock);
+	spin_unlock_irqrestore(&chan->lock, flags);
 
 	/* Recycle all acked descriptors. */
 	rcar_dmac_desc_recycle_acked(chan);
