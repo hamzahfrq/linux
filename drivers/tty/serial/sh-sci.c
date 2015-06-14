@@ -1449,8 +1449,10 @@ static void work_fn_rx(struct work_struct *work)
 	struct dma_async_tx_descriptor *desc;
 	struct dma_tx_state state;
 	enum dma_status status;
+	unsigned long flags;
 	int new;
 
+	spin_lock_irqsave(&port->lock, flags);
 	if (s->active_rx == s->cookie_rx[0]) {
 		new = 0;
 	} else if (s->active_rx == s->cookie_rx[1]) {
@@ -1458,7 +1460,7 @@ static void work_fn_rx(struct work_struct *work)
 	} else {
 		dev_err(port->dev, "%s: Rx cookie %d not found!\n", __func__,
 			s->active_rx);
-		return;
+		goto out;
 	}
 	desc = s->desc_rx[new];
 
@@ -1466,7 +1468,6 @@ static void work_fn_rx(struct work_struct *work)
 	if (status != DMA_COMPLETE) {
 		/* Handle incomplete DMA receive */
 		struct dma_chan *chan = s->chan_rx;
-		unsigned long flags;
 		unsigned int read;
 		int count;
 
@@ -1475,29 +1476,29 @@ static void work_fn_rx(struct work_struct *work)
 		dev_dbg(port->dev, "Read %zu bytes with cookie %d\n", read,
 			s->active_rx);
 
-		spin_lock_irqsave(&port->lock, flags);
 		count = sci_dma_rx_push(s, read);
-		spin_unlock_irqrestore(&port->lock, flags);
 
 		if (count)
 			tty_flip_buffer_push(&port->state->port);
 
 		sci_submit_rx(s);
 
-		return;
+		goto out;
 	}
 
 	s->cookie_rx[new] = dmaengine_submit(desc);
 	if (dma_submit_error(s->cookie_rx[new])) {
 		dev_warn(port->dev, "Failed submitting Rx DMA descriptor\n");
 		sci_rx_dma_release(s, true);
-		return;
+		goto out;
 	}
 
 	s->active_rx = s->cookie_rx[!new];
 
 	dev_dbg(port->dev, "%s: cookie %d #%d, new active cookie %d\n",
 		__func__, s->cookie_rx[new], new, s->active_rx);
+out:
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void work_fn_tx(struct work_struct *work)
