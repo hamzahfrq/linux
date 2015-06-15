@@ -1759,6 +1759,11 @@ static struct dma_chan *sci_request_dma_chan(struct uart_port *port,
 	struct dma_chan *chan;
 	struct dma_slave_config cfg;
 	int ret;
+	struct sci_port *s = to_sci_port(port);
+
+	/* do not try to request channel, will fail anyway */
+	if(!s->cfg->use_dma)
+		return NULL;
 
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_SLAVE, mask);
@@ -2740,6 +2745,21 @@ sci_parse_dt(struct platform_device *pdev, unsigned int *dev_id)
 	p->type = info->type;
 	p->regtype = info->regtype;
 	p->scscr = SCSCR_RE | SCSCR_TE;
+
+	/* WORKAROUND: This check is needed for nodes where dma should NOT be used,
+	 * but dma usage is enabled in kernel. By default, whether dma is defined
+	 * in DT or not is only checked when dma is requested. */
+#if defined (CONFIG_SERIAL_SH_SCI_DMA)
+	if (of_property_count_strings(np, "dma-names") < 0) {
+		dev_notice(&pdev->dev, "Will NOT use dma\n");
+		p->use_dma = false;
+	} else {
+		dev_notice(&pdev->dev, "Will try to use dma\n");
+		p->use_dma = true;
+	}
+#else
+	p->use_dma = false;
+#endif
 
 	return p;
 }

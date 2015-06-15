@@ -73,6 +73,7 @@ struct plat_sci_port {
 
 	unsigned int	dma_slave_tx;
 	unsigned int	dma_slave_rx;
+	bool			use_dma;
 };
 
 #endif /* __LINUX_SERIAL_SCI_H */
