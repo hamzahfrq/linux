@@ -21,8 +21,6 @@
 #define SUPPORT_SYSRQ
 #endif
 
-#undef DEBUG
-
 #include <linux/clk.h>
 #include <linux/console.h>
 #include <linux/ctype.h>
