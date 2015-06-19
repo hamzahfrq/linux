@@ -745,6 +745,14 @@ config SERIAL_SH_SCI_DMA
 	bool "DMA support"
 	depends on SERIAL_SH_SCI && DMA_ENGINE
 
+config SERIAL_SH_SCI_DEBUG
+	bool "Enable debug output"
+	depends on SERIAL_SH_SCI
+	help
+	  Say Y here to enable debug output for SuperH SCI(F) serial port.
+
+	  If unsure, say N.
+
 config SERIAL_PNX8XXX
 	bool "Enable PNX8XXX SoCs' UART Support"
 	depends on SOC_PNX833X
