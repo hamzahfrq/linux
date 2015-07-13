@@ -2315,7 +2315,7 @@ static int sci_init_single(struct platform_device *dev,
 		port->fifosize = 128;
 		sci_port->overrun_reg = SCLSR;
 		sci_port->overrun_mask = SCLSR_ORER;
-		sci_port->sampling_rate = 0;
+		sci_port->sampling_rate = 13;
 		break;
 	case PORT_SCIFA:
 		port->fifosize = 64;
