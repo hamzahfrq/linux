@@ -1362,8 +1362,12 @@ static void sci_rx_dma_release(struct sci_port *s, bool enable_pio)
 {
 	struct dma_chan *chan = s->chan_rx;
 	struct uart_port *port = &s->port;
+	unsigned long flags;
 
+	spin_lock_irqsave(&port->lock, flags);
 	s->chan_rx = NULL;
+	spin_unlock_irqrestore(&port->lock, flags);
+	dmaengine_terminate_all(chan);
 	s->cookie_rx[0] = s->cookie_rx[1] = -EINVAL;
 	if (sg_dma_address(&s->sg_rx[0])) {
 		dma_free_coherent(chan->device->dev, s->buf_len_rx * 2,
@@ -1380,8 +1384,12 @@ static void sci_tx_dma_release(struct sci_port *s, bool enable_pio)
 {
 	struct dma_chan *chan = s->chan_tx;
 	struct uart_port *port = &s->port;
+	unsigned long flags;
 
+	spin_lock_irqsave(&port->lock, flags);
 	s->chan_tx = NULL;
+	spin_unlock_irqrestore(&port->lock, flags);
+	dmaengine_terminate_all(chan);
 	s->cookie_tx = -EINVAL;
 	if (s->sg_len_tx) {
 		/* Restore sg_dma_len() and sg_dma_address() */
@@ -1456,7 +1464,8 @@ static void work_fn_rx(struct work_struct *work)
 	} else {
 		dev_err(port->dev, "%s: Rx cookie %d not found!\n", __func__,
 			s->active_rx);
-		goto out;
+		spin_unlock_irqrestore(&port->lock, flags);
+		return;
 	}
 	desc = s->desc_rx[new];
 
@@ -1477,23 +1486,23 @@ static void work_fn_rx(struct work_struct *work)
 		if (count)
 			tty_flip_buffer_push(&port->state->port);
 
+		spin_unlock_irqrestore(&port->lock, flags);
 		sci_submit_rx(s);
-
-		goto out;
+		return;
 	}
 
 	s->cookie_rx[new] = dmaengine_submit(desc);
 	if (dma_submit_error(s->cookie_rx[new])) {
 		dev_warn(port->dev, "Failed submitting Rx DMA descriptor\n");
+		spin_unlock_irqrestore(&port->lock, flags);
 		sci_rx_dma_release(s, true);
-		goto out;
+		return;
 	}
 
 	s->active_rx = s->cookie_rx[!new];
 
 	dev_dbg(port->dev, "%s: cookie %d #%d, new active cookie %d\n",
 		__func__, s->cookie_rx[new], new, s->active_rx);
-out:
 	spin_unlock_irqrestore(&port->lock, flags);
 }
 
