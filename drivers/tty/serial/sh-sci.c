@@ -1913,6 +1913,13 @@ static void sci_shutdown(struct uart_port *port)
 	spin_lock_irqsave(&port->lock, flags);
 	sci_stop_rx(port);
 	sci_stop_tx(port);
+
+#ifdef CONFIG_SERIAL_SH_SCI_DMA
+	if(s->chan_rx) {
+		dev_dbg(port->dev, "%s(%d) deleting rx_timer\n", __func__, port->line);
+		del_timer_sync(&s->rx_timer);
+	}
+#endif
 	scscr = serial_port_in(port, SCSCR);
 	scscr &= ~(SCSCR_TE | SCSCR_RE);
 	serial_port_out(port, SCSCR, scscr);
