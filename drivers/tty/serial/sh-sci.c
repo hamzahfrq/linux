@@ -2326,9 +2326,24 @@ static int sci_verify_port(struct uart_port *port, struct serial_struct *ser)
 
 static void sci_flush_port(struct uart_port *port){
 
-	//TODO: flush device buffer
+	struct circ_buf *xmit;
+	/* Just in case*/
+	if (!port)
+		return;
 
-	sci_fifo_flush(port);
+	/* Just in case*/
+	if (!port->state)
+		return;
+
+	xmit = &port->state->xmit;
+
+	if (xmit->buf)
+		if (!uart_tx_stopped(port))
+			while(!uart_circ_empty(xmit)){
+				sci_start_tx(port);
+				sci_fifo_flush(port);
+			}
+	
 }
 
 static struct uart_ops sci_uart_ops = {
