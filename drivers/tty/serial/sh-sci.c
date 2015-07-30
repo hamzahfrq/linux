@@ -1923,34 +1923,14 @@ static inline void sci_free_dma(struct uart_port *port)
 }
 #endif
 
-static void sci_reset(struct uart_port *port)
+static void sci_fifo_flush(struct uart_port *port)
 {
-	const struct plat_sci_reg *reg;
-	unsigned int status;
 
-	do {
-		status = serial_port_in(port, SCxSR);
-	} while (!(status & SCxSR_TEND(port)));
+	unsigned short bits;
 
-	serial_port_out(port, SCSCR, 0x00);	/* TE=0, RE=0, CKE1=0 */
-
-	/* Reset the FIFO if available */
-	reg = sci_getreg(port, SCFCR);
-	if (reg->size) {
-		serial_port_out(port, SCFCR, SCFCR_RFRST | SCFCR_TFRST);
-
-		/* WORKAROUND: flush any remaining bytes in the FIFO */
-		while(status & SCxSR_RDxF(port)) {
-
-			dev_dbg(port->dev, "%s: Flushing a byte from the FIFO\n",
-					__func__);
-
-			serial_port_in(port, SCxRDR);
-
-			serial_port_out(port, SCxSR, SCxSR_RDxF_CLEAR(port));
-			status = serial_port_in(port, SCxSR);
-		}
-	}
+    bits = SCxSR_TDxE(port) | SCxSR_TEND(port);
+    while ((serial_port_in(port, SCxSR) & bits) != bits)
+        cpu_relax();
 }
 
 static int sci_startup(struct uart_port *port)
@@ -1961,7 +1941,7 @@ static int sci_startup(struct uart_port *port)
 
 	dev_dbg(port->dev, "%s(%d)\n", __func__, port->line);
 
-	sci_reset(port);
+	sci_fifo_flush(port);
 
 	ret = sci_request_irq(s);
 	if (unlikely(ret < 0))
@@ -2133,7 +2113,7 @@ static void sci_set_termios(struct uart_port *port, struct ktermios *termios,
 
 	sci_port_enable(s);
 
-	sci_reset(port);
+	sci_fifo_flush(port);
 
 	smr_val |= serial_port_in(port, SCSMR) & SCSMR_CKS;
 
