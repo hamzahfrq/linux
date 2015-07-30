@@ -2324,6 +2324,13 @@ static int sci_verify_port(struct uart_port *port, struct serial_struct *ser)
 	return 0;
 }
 
+static void sci_flush_port(struct uart_port *port){
+
+	//TODO: flush device buffer
+
+	sci_fifo_flush(port);
+}
+
 static struct uart_ops sci_uart_ops = {
 	.tx_empty	= sci_tx_empty,
 	.set_mctrl	= sci_set_mctrl,
@@ -2341,6 +2348,7 @@ static struct uart_ops sci_uart_ops = {
 	.request_port	= sci_request_port,
 	.config_port	= sci_config_port,
 	.verify_port	= sci_verify_port,
+	.flush_buffer	= sci_flush_port,
 #ifdef CONFIG_CONSOLE_POLL
 	.poll_get_char	= sci_poll_get_char,
 	.poll_put_char	= sci_poll_put_char,
