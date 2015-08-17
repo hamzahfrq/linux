@@ -3,7 +3,7 @@
 #
 
 # Common objects
-obj-y				:= timer.o console.o
+obj-y				:= timer.o
 
 # CPU objects
 obj-$(CONFIG_ARCH_SH73A0)	+= setup-sh73a0.o
@@ -52,7 +52,6 @@ obj-$(CONFIG_ARCH_RCAR_GEN2)	+= pm-rcar-gen2.o
 # Board objects
 ifndef CONFIG_ARCH_SHMOBILE_MULTI
 obj-$(CONFIG_MACH_BOCKW)	+= board-bockw.o
-obj-$(CONFIG_MACH_BOCKW_REFERENCE)	+= board-bockw-reference.o
 endif
 
 # Framework support
