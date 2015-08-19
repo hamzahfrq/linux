@@ -136,6 +136,7 @@ struct rcar_dmac_desc_page {
  * @desc.running: the descriptor being processed (a member of the active list)
  * @desc.chunks_free: list of free transfer chunk descriptors
  * @desc.pages: list of pages used by allocated descriptors
+ * @low_lateny: Temporary place to hold flag to run IRQ threat directly
  */
 struct rcar_dmac_chan {
 	struct dma_chan chan;
@@ -162,6 +163,7 @@ struct rcar_dmac_chan {
 
 		struct list_head pages;
 	} desc;
+	int low_latency;
 };
 
 #define to_rcar_dmac_chan(c)	container_of(c, struct rcar_dmac_chan, chan)
@@ -757,6 +759,9 @@ static void rcar_dmac_chan_reinit(struct rcar_dmac_chan *chan)
 
 	spin_lock_irqsave(&chan->lock, flags);
 
+	/* reset flag */
+	chan->low_latency = false;
+
 	/* Move all non-free descriptors to the local lists. */
 	list_splice_init(&chan->desc.pending, &descs);
 	list_splice_init(&chan->desc.active, &descs);
@@ -885,6 +890,10 @@ rcar_dmac_chan_prep_sg(struct rcar_dmac_chan *chan, struct scatterlist *sgl,
 	desc = rcar_dmac_desc_get(chan);
 	if (!desc)
 		return NULL;
+
+	/* copy to rcar_dmac_channel */
+	if((dma_flags & DMA_LOW_LATENCY) == DMA_LOW_LATENCY)
+		chan->low_latency = true;
 
 	desc->async_tx.flags = dma_flags;
 	desc->async_tx.cookie = -EBUSY;
@@ -1372,31 +1381,6 @@ done:
 	return ret;
 }
 
-static irqreturn_t rcar_dmac_isr_channel(int irq, void *dev)
-{
-	u32 mask = RCAR_DMACHCR_DSE | RCAR_DMACHCR_TE;
-	struct rcar_dmac_chan *chan = dev;
-	irqreturn_t ret = IRQ_NONE;
-	u32 chcr;
-
-	spin_lock(&chan->lock);
-
-	chcr = rcar_dmac_chan_read(chan, RCAR_DMACHCR);
-	if (chcr & RCAR_DMACHCR_TE)
-		mask |= RCAR_DMACHCR_DE;
-	rcar_dmac_chan_write(chan, RCAR_DMACHCR, chcr & ~mask);
-
-	if (chcr & RCAR_DMACHCR_DSE)
-		ret |= rcar_dmac_isr_desc_stage_end(chan);
-
-	if (chcr & RCAR_DMACHCR_TE)
-		ret |= rcar_dmac_isr_transfer_end(chan);
-
-	spin_unlock(&chan->lock);
-
-	return ret;
-}
-
 static irqreturn_t rcar_dmac_isr_channel_thread(int irq, void *dev)
 {
 	struct rcar_dmac_chan *chan = dev;
@@ -1451,6 +1435,35 @@ static irqreturn_t rcar_dmac_isr_channel_thread(int irq, void *dev)
 	rcar_dmac_desc_recycle_acked(chan);
 
 	return IRQ_HANDLED;
+}
+
+static irqreturn_t rcar_dmac_isr_channel(int irq, void *dev)
+{
+	u32 mask = RCAR_DMACHCR_DSE | RCAR_DMACHCR_TE;
+	struct rcar_dmac_chan *chan = dev;
+	irqreturn_t ret = IRQ_NONE;
+	u32 chcr;
+
+	spin_lock(&chan->lock);
+
+	chcr = rcar_dmac_chan_read(chan, RCAR_DMACHCR);
+	if (chcr & RCAR_DMACHCR_TE)
+		mask |= RCAR_DMACHCR_DE;
+	rcar_dmac_chan_write(chan, RCAR_DMACHCR, chcr & ~mask);
+
+	if (chcr & RCAR_DMACHCR_DSE)
+		ret |= rcar_dmac_isr_desc_stage_end(chan);
+
+	if (chcr & RCAR_DMACHCR_TE)
+		ret |= rcar_dmac_isr_transfer_end(chan);
+
+	spin_unlock(&chan->lock);
+
+	/* call directly if low_latency is used */
+	if(chan->low_latency && (ret & IRQ_WAKE_THREAD))
+		ret = rcar_dmac_isr_channel_thread(irq, dev);
+
+	return ret;
 }
 
 static irqreturn_t rcar_dmac_isr_error(int irq, void *data)
