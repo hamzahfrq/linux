@@ -1209,15 +1209,26 @@ static unsigned int rcar_dmac_chan_get_residue(struct rcar_dmac_chan *chan,
 	unsigned int dptr = 0;
 
 	if (!desc)
+	{
+		dev_dbg(chan->chan.device->dev, "Descriptor is NULL, last submitted = %d, last completed = %d",
+				chan->chan.cookie, chan->chan.completed_cookie);
 		return 0;
+	}
 
 	/*
 	 * If the cookie doesn't correspond to the currently running transfer
-	 * then the descriptor hasn't been processed yet, and the residue is
-	 * equal to the full descriptor size.
+	 * then either the descriptor hasn't been processed yet, or it is already
+	 * complete. Set residue accordingly.
 	 */
 	if (cookie != desc->async_tx.cookie)
-		return desc->size;
+	{
+		dev_dbg(chan->chan.device->dev, "Not Current cookie, last submitted = %d, last completed = %d",
+						chan->chan.cookie, chan->chan.completed_cookie);
+		if(cookie < desc->async_tx.cookie)
+			return 0;
+		else
+			return desc->size;
+	}
 
 	/*
 	 * In descriptor mode the descriptor running pointer is not maintained
@@ -1267,6 +1278,9 @@ static enum dma_status rcar_dmac_tx_status(struct dma_chan *chan,
 	spin_lock_irqsave(&rchan->lock, flags);
 	residue = rcar_dmac_chan_get_residue(rchan, cookie);
 	spin_unlock_irqrestore(&rchan->lock, flags);
+
+	if(!residue)
+		return DMA_COMPLETE;
 
 	dma_set_residue(txstate, residue);
 
