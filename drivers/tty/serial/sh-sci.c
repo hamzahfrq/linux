@@ -1544,6 +1544,7 @@ static void work_fn_rx(struct work_struct *work)
 		struct dma_chan *chan = s->chan_rx;
 		unsigned int read;
 		int count;
+		u16 scr;
 
 		s->rx_timer_flag = 0;
 
@@ -1582,6 +1583,16 @@ static void work_fn_rx(struct work_struct *work)
 
 		spin_unlock_irqrestore(&port->lock, flags);
 		sci_submit_rx(s);
+
+		/* Direct new serial port interrupts back to CPU */
+		scr = serial_port_in(port, SCSCR);
+
+		if (port->type == PORT_SCIFA || port->type == PORT_SCIFB) {
+			scr &= ~SCSCR_RDRQE;
+			enable_irq(s->irqs[SCIx_RXI_IRQ]);
+		}
+		serial_port_out(port, SCSCR, scr | SCSCR_RIE);
+
 		return;
 	}
 
@@ -1783,13 +1794,7 @@ static void rx_timer_fn(unsigned long arg)
 {
 	struct sci_port *s = (struct sci_port *)arg;
 	struct uart_port *port = &s->port;
-	u16 scr = serial_port_in(port, SCSCR);
 
-	if (port->type == PORT_SCIFA || port->type == PORT_SCIFB) {
-		scr &= ~SCSCR_RDRQE;
-		enable_irq(s->irqs[SCIx_RXI_IRQ]);
-	}
-	serial_port_out(port, SCSCR, scr | SCSCR_RIE);
 	dev_dbg(port->dev, "%lu: DMA Rx timed out for cookie %d\n", jiffies, s->active_rx);
 	s->rx_timer_flag = 1;
 	schedule_work(&s->work_rx);
