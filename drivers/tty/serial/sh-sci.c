@@ -1524,6 +1524,7 @@ fail:
 static void work_fn_rx(struct work_struct *work)
 {
 	struct sci_port *s = container_of(work, struct sci_port, work_rx);
+	struct dma_chan *chan = s->chan_rx;
 	struct uart_port *port = &s->port;
 	struct dma_async_tx_descriptor *desc;
 	struct dma_tx_state state;
@@ -1617,6 +1618,7 @@ static void work_fn_rx(struct work_struct *work)
 		next = new % 2 + 1;
 
 	s->active_rx = s->cookie_rx[next];
+	dma_async_issue_pending(chan);
 
 	dev_dbg(port->dev, "%s: cookie %d #%d, new active cookie %d\n",
 		__func__, s->cookie_rx[new], new, s->active_rx);
