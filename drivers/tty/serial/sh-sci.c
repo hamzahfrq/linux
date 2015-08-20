@@ -1799,7 +1799,7 @@ static void rx_timer_fn(unsigned long arg)
 
 	dev_dbg(port->dev, "%lu: DMA Rx timed out for cookie %d\n", jiffies, s->active_rx);
 	s->rx_timer_flag = 1;
-	schedule_work(&s->work_rx);
+	work_fn_rx(&s->work_rx);
 }
 
 static struct dma_chan *sci_request_dma_chan(struct uart_port *port,
