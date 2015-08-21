@@ -1541,6 +1541,10 @@ static void work_fn_rx(struct work_struct *work)
 
 	if(s->rx_timer_flag)
 	{
+		struct dma_chan *chan = s->chan_rx;
+		unsigned int read;
+		int count;
+
 		s->rx_timer_flag = 0;
 
 		/* race condition when timer expires and DMA transaction is also complete.
@@ -1552,11 +1556,20 @@ static void work_fn_rx(struct work_struct *work)
 			return;
 		}
 
-		/* Handle incomplete DMA receive */
-		struct dma_chan *chan = s->chan_rx;
-		unsigned int read;
-		int count;
+		dmaengine_pause(chan);
 
+		/* sometimes DMA transfer doesn't stop even if it is stopped and
+		 * data keeps on coming untill transaction is complete so check
+		 * for DMA_COMPLETE again
+		 * Let the DMA complete IRQ handle the packet */
+		status = dmaengine_tx_status(s->chan_rx, s->active_rx, &state);
+		if (status == DMA_COMPLETE) {
+			spin_unlock_irqrestore(&port->lock, flags);
+			dev_dbg(port->dev, "Transaction completed after DMA engine was stopped");
+			return;
+		}
+
+		/* Handle incomplete DMA receive */
 		dmaengine_terminate_all(chan);
 		read = sg_dma_len(&s->sg_rx[new]) - state.residue;
 		dev_dbg(port->dev, "Read %zu bytes with cookie %d\n", read,
