@@ -119,6 +119,7 @@ struct sci_port {
 	struct work_struct		work_rx;
 	struct timer_list		rx_timer;
 	unsigned int			rx_timeout;
+	unsigned int			rx_timer_flag;
 #endif
 
 	struct notifier_block		freq_transition;
@@ -1418,6 +1419,7 @@ static void sci_dma_rx_complete(void *arg)
 					sg_dma_len(&s->sg_rx[active]));
 
 	mod_timer(&s->rx_timer, jiffies + s->rx_timeout);
+	s->rx_timer_flag = 0;
 
 	spin_unlock_irqrestore(&port->lock, flags);
 
@@ -1502,6 +1504,7 @@ static void sci_submit_rx(struct sci_port *s)
 	}
 
 	s->active_rx = s->cookie_rx[0];
+	s->rx_timer_flag = 0;
 
 	dma_async_issue_pending(chan);
 	return;
@@ -1536,8 +1539,19 @@ static void work_fn_rx(struct work_struct *work)
 	}
 	desc = s->desc_rx[new];
 
-	status = dmaengine_tx_status(s->chan_rx, s->active_rx, &state);
-	if (status != DMA_COMPLETE) {
+	if(s->rx_timer_flag)
+	{
+		s->rx_timer_flag = 0;
+
+		/* race condition when timer expires and DMA transaction is also complete.
+		 * Let the DMA complete IRQ handle the packet*/
+		status = dmaengine_tx_status(s->chan_rx, s->active_rx, &state);
+		if (status == DMA_COMPLETE) {
+			spin_unlock_irqrestore(&port->lock, flags);
+			dev_dbg(port->dev, "Timer expired but DMA transaction completed");
+			return;
+		}
+
 		/* Handle incomplete DMA receive */
 		struct dma_chan *chan = s->chan_rx;
 		unsigned int read;
@@ -1546,7 +1560,7 @@ static void work_fn_rx(struct work_struct *work)
 		dmaengine_terminate_all(chan);
 		read = sg_dma_len(&s->sg_rx[new]) - state.residue;
 		dev_dbg(port->dev, "Read %zu bytes with cookie %d\n", read,
-			s->active_rx);
+				s->active_rx);
 
 		count = sci_dma_rx_push(s, &s->sg_rx[new], read);
 
@@ -1763,7 +1777,8 @@ static void rx_timer_fn(unsigned long arg)
 		enable_irq(s->irqs[SCIx_RXI_IRQ]);
 	}
 	serial_port_out(port, SCSCR, scr | SCSCR_RIE);
-	dev_dbg(port->dev, "DMA Rx timed out\n");
+	dev_dbg(port->dev, "%lu: DMA Rx timed out for cookie %d\n", jiffies, s->active_rx);
+	s->rx_timer_flag = 1;
 	schedule_work(&s->work_rx);
 }
 
@@ -2343,7 +2358,7 @@ static void sci_flush_port(struct uart_port *port){
 				sci_start_tx(port);
 				sci_fifo_flush(port);
 			}
-	
+
 }
 
 static struct uart_ops sci_uart_ops = {
