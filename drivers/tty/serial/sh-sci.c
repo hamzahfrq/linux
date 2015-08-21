@@ -1486,7 +1486,7 @@ static void sci_submit_rx(struct sci_port *s)
 
 		desc = dmaengine_prep_slave_sg(chan,
 			sg, 1, DMA_DEV_TO_MEM,
-			DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+			DMA_PREP_INTERRUPT | DMA_CTRL_ACK | DMA_LOW_LATENCY);
 		if (!desc)
 			goto fail;
 
@@ -1560,7 +1560,7 @@ static void work_fn_rx(struct work_struct *work)
 
 	desc = dmaengine_prep_slave_sg(s->chan_rx, &s->sg_rx[new], 1,
 				       DMA_DEV_TO_MEM,
-				       DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+				       DMA_PREP_INTERRUPT | DMA_CTRL_ACK | DMA_LOW_LATENCY);
 	if (!desc)
 		goto fail;
 
