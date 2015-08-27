@@ -2144,12 +2144,12 @@ static void sci_set_termios(struct uart_port *port, struct ktermios *termios,
 			bits++;
 		if (termios->c_cflag & PARENB)
 			bits++;
-		s->rx_timeout = DIV_ROUND_UP((s->buf_len_rx * 2 * bits * HZ) /
+		s->rx_timeout = 2 * DIV_ROUND_UP((s->buf_len_rx * 2 * bits * HZ) /
 					     (baud / 10), 10);
 		dev_dbg(port->dev, "DMA Rx t-out %ums, tty t-out %u jiffies\n",
 			s->rx_timeout * 1000 / HZ, port->timeout);
-		if (s->rx_timeout < msecs_to_jiffies(20))
-			s->rx_timeout = msecs_to_jiffies(20);
+		if (s->rx_timeout < msecs_to_jiffies(5))
+			s->rx_timeout = 2 * s->rx_timeout;
 	}
 #endif
 
