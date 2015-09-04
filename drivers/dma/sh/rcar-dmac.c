@@ -1234,7 +1234,6 @@ static unsigned int rcar_dmac_chan_get_residue(struct rcar_dmac_chan *chan,
 		 * This shouldn't happen if the calling driver passes a correct
 		 * cookie value.
 		 */
-		WARN(1, "No descriptor for cookie!");
 		return 0;
 	}
 
